@@ -1,46 +1,107 @@
+
+
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Whisp 💬</title>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <style>
-    body { font-family: Arial; background: #fafafa; display:flex; flex-direction:column; align-items:center; }
-    #messages { width: 90%; max-width: 400px; height: 60vh; overflow-y: auto; background:#fff; padding:10px; border-radius:10px; margin-top:20px; box-shadow:0 0 10px #ccc; }
-    #input-area { display:flex; width:90%; max-width:400px; margin-top:10px; }
-    input { flex:1; padding:10px; border-radius:10px; border:1px solid #ccc; }
-    button { margin-left:10px; padding:10px 20px; border:none; border-radius:10px; background:#007bff; color:white; cursor:pointer; }
-  </style>
+    <title>Whisp Chat</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
+
 <body>
-  <h2>Whisp 💬</h2>
+<div id="usernameBox" class="centered">
+    <h2>Enter your username</h2>
+    <input id="usernameInput" placeholder="Username" />
+    <button onclick="submitUsername()">Join Chat</button>
+    <p id="error" style="color:red;"></p>
+</div>
 
-  <div id="messages"></div>
+<div id="chatBox" style="display:none;">
+    <div id="sidebar">
+        <h3>Online</h3>
+        <ul id="onlineUsers"></ul>
+    </div>
 
-  <div id="input-area">
-    <input id="message" placeholder="Type a message..." autocomplete="off" />
-    <button onclick="sendMessage()">Send</button>
-  </div>
+    <div id="chat">
+        <div id="messages"></div>
 
-  <script>
-    const socket = io();
+        <div id="inputArea">
+            <input id="messageInput" placeholder="Type a message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+</div>
 
-    socket.on('message', (msg) => {
-      const messages = document.getElementById('messages');
-      const div = document.createElement('div');
-      div.textContent = msg;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
+<script>
+const socket = io();
+let username = null;
+
+function submitUsername() {
+    const name = document.getElementById("usernameInput").value.trim();
+
+    if (name.length === 0) return;
+
+    username = name;
+    socket.emit("join", { username });
+}
+
+socket.on("username_taken", () => {
+    document.getElementById("error").innerText = "This username already exists!";
+});
+
+socket.on("user_joined", (data) => {
+    document.getElementById("usernameBox").style.display = "none";
+    document.getElementById("chatBox").style.display = "flex";
+    updateOnline(data.online);
+});
+
+socket.on("user_left", (data) => {
+    updateOnline(data.online);
+});
+
+function updateOnline(list) {
+    const userList = document.getElementById("onlineUsers");
+    userList.innerHTML = "";
+    list.forEach(u => {
+        const li = document.createElement("li");
+        li.innerText = u;
+        userList.appendChild(li);
+    });
+}
+
+function sendMessage() {
+    const msg = document.getElementById("messageInput").value.trim();
+    if (msg.length === 0) return;
+
+    socket.emit("message", {
+        username,
+        message: msg
     });
 
-    function sendMessage() {
-      const input = document.getElementById('message');
-      const msg = input.value.trim();
-      if (msg !== "") {
-        socket.send(msg);
-        input.value = '';
-      }
+    document.getElementById("messageInput").value = "";
+}
+
+socket.on("new_message", (data) => {
+    const messages = document.getElementById("messages");
+
+    const bubble = document.createElement("div");
+    bubble.classList.add("bubble");
+
+    if (data.username === username) {
+        bubble.classList.add("me");
+    } else {
+        bubble.classList.add("other");
     }
-  </script>
+
+    bubble.innerHTML = `
+        <strong>${data.username}</strong><br>
+        ${data.message}
+        <div class="timestamp">${data.timestamp}</div>
+    `;
+
+    messages.appendChild(bubble);
+    messages.scrollTop = messages.scrollHeight;
+});
+</script>
 </body>
 </html>
-
