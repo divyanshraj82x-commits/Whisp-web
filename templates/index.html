@@ -1,5 +1,3 @@
-
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -46,16 +44,16 @@ function submitUsername() {
 }
 
 socket.on("username_taken", () => {
-    document.getElementById("error").innerText = "This username already exists!";
+    document.getElementById("error").innerText = "⚠ Username already exists!";
 });
 
-socket.on("user_joined", (data) => {
+socket.on("join_success", (data) => {
     document.getElementById("usernameBox").style.display = "none";
     document.getElementById("chatBox").style.display = "flex";
     updateOnline(data.online);
 });
 
-socket.on("user_left", (data) => {
+socket.on("update_online", (data) => {
     updateOnline(data.online);
 });
 
