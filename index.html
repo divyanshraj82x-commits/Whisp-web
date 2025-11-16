@@ -1,45 +1,181 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Whisp 💬</title>
+  <meta charset="utf-8" />
+  <title>Whisp — iMessage Style</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <style>
-    body { font-family: Arial; background: #fafafa; display:flex; flex-direction:column; align-items:center; }
-    #messages { width: 90%; max-width: 400px; height: 60vh; overflow-y: auto; background:#fff; padding:10px; border-radius:10px; margin-top:20px; box-shadow:0 0 10px #ccc; }
-    #input-area { display:flex; width:90%; max-width:400px; margin-top:10px; }
-    input { flex:1; padding:10px; border-radius:10px; border:1px solid #ccc; }
-    button { margin-left:10px; padding:10px 20px; border:none; border-radius:10px; background:#007bff; color:white; cursor:pointer; }
-  </style>
 </head>
 <body>
-  <h2>Whisp 💬</h2>
+  <div class="app">
 
-  <div id="messages"></div>
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">Whisp</div>
+      <div class="top-actions">
+        <button id="membersBtn" class="icon-btn">👥</button>
+      </div>
+    </header>
 
-  <div id="input-area">
-    <input id="message" placeholder="Type a message..." autocomplete="off" />
-    <button onclick="sendMessage()">Send</button>
+    <!-- Main area -->
+    <div class="container">
+
+      <!-- Members slide panel (hidden by default) -->
+      <aside id="membersPanel" class="members-panel">
+        <h4>Online</h4>
+        <ul id="membersList" class="members-list"></ul>
+      </aside>
+
+      <!-- Chat column -->
+      <main class="chat-column">
+        <!-- Username modal / join -->
+        <div id="joinCard" class="card join-card">
+          <h3>Enter your display name</h3>
+          <input id="nameInput" placeholder="Your name" autocomplete="off" />
+          <div class="row">
+            <button id="joinBtn" class="btn primary">Join</button>
+          </div>
+          <p id="joinError" class="error"></p>
+        </div>
+
+        <!-- Chat card (hidden until joined) -->
+        <div id="chatCard" class="card chat-card hidden">
+          <div id="messages" class="messages"></div>
+
+          <div class="composer">
+            <input id="msgInput" placeholder="iMessage them..." autocomplete="off" />
+            <button id="sendBtn" class="btn send">Send</button>
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
 
-  <script>
-    const socket = io();
+<script>
+  const socket = io();
+  // DOM
+  const joinCard = document.getElementById('joinCard');
+  const joinBtn = document.getElementById('joinBtn');
+  const nameInput = document.getElementById('nameInput');
+  const joinError = document.getElementById('joinError');
 
-    socket.on('message', (msg) => {
-      const messages = document.getElementById('messages');
-      const div = document.createElement('div');
-      div.textContent = msg;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
+  const chatCard = document.getElementById('chatCard');
+  const messagesEl = document.getElementById('messages');
+  const msgInput = document.getElementById('msgInput');
+  const sendBtn = document.getElementById('sendBtn');
+
+  const membersBtn = document.getElementById('membersBtn');
+  const membersPanel = document.getElementById('membersPanel');
+  const membersList = document.getElementById('membersList');
+
+  let myName = localStorage.getItem('whisp_name') || null;
+
+  // show/hide members panel
+  membersBtn.addEventListener('click', () => membersPanel.classList.toggle('open'));
+
+  // try auto-join if name saved
+  if (myName) {
+    socket.emit('join', { username: myName });
+  }
+
+  joinBtn.addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    if (!name) return (joinError.textContent = 'Please enter a name');
+    socket.emit('join', { username: name });
+  });
+
+  // socket responses
+  socket.on('username_taken', () => {
+    joinError.textContent = 'That name is already in use — choose another.';
+  });
+
+  // server confirms join success to that client only
+  socket.on('join_success', (data) => {
+    myName = data.username || nameInput.value.trim() || myName;
+    localStorage.setItem('whisp_name', myName);
+    joinError.textContent = '';
+    joinCard.classList.add('hidden');
+    chatCard.classList.remove('hidden');
+    renderSystem(`You joined as ${myName}`);
+    if (data.online) updateMembers(data.online);
+  });
+
+  // other clients' update of user list
+  socket.on('update_online', (data) => {
+    if (data.online) updateMembers(data.online);
+  });
+  // fallback: server might send userlist
+  socket.on('userlist', (list) => updateMembers(list));
+
+  // system messages (join/leave)
+  socket.on('system message', (text) => renderSystem(text));
+
+  // new chat message
+  socket.on('new_message', (data) => {
+    appendMessage(data.username, data.message, data.timestamp);
+  });
+
+  // send message
+  function sendMessage() {
+    if (!myName) return;
+    const txt = msgInput.value.trim();
+    if (!txt) return;
+    const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    socket.emit('message', { username: myName, message: txt, timestamp: ts });
+    msgInput.value = '';
+  }
+  sendBtn.addEventListener('click', sendMessage);
+  msgInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+  // helpers
+  function appendMessage(username, text, ts) {
+    const isMe = username === myName;
+    const row = document.createElement('div');
+    row.className = isMe ? 'msg-row me' : 'msg-row other';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+
+    // sender (small)
+    const sender = document.createElement('div');
+    sender.className = 'sender';
+    sender.textContent = username;
+
+    // message text
+    const body = document.createElement('div');
+    body.className = 'body';
+    body.textContent = text;
+
+    // timestamp
+    const time = document.createElement('div');
+    time.className = 'time';
+    time.textContent = ts || '';
+
+    bubble.appendChild(sender);
+    bubble.appendChild(body);
+    bubble.appendChild(time);
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function renderSystem(text) {
+    const el = document.createElement('div');
+    el.className = 'system';
+    el.textContent = text;
+    messagesEl.appendChild(el);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function updateMembers(list) {
+    membersList.innerHTML = '';
+    (list || []).forEach(n => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="dot"></span><span class="name">${n}</span>`;
+      membersList.appendChild(li);
     });
-
-    function sendMessage() {
-      const input = document.getElementById('message');
-      const msg = input.value.trim();
-      if (msg !== "") {
-        socket.send(msg);
-        input.value = '';
-      }
-    }
-  </script>
+  }
+</script>
 </body>
 </html>
